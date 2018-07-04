@@ -9,6 +9,7 @@ import org.apache.kafka.streams.Consumed;
 import org.apache.kafka.common.serialization.Serdes;
 
 
+
 import java.io.IOException;
 
 public class ApplicationStream extends StreamingConfig{
@@ -33,8 +34,9 @@ public class ApplicationStream extends StreamingConfig{
 
     }
 
-    public void print(JsonNode stringToParse){
-        System.out.println(stringToParse);
+    public JsonNode print(JsonNode stringToParse){
+        System.out.println(stringToParse.asText());
+        return stringToParse;
     }
 
 
@@ -48,8 +50,7 @@ public class ApplicationStream extends StreamingConfig{
         StreamsBuilder builder = new StreamsBuilder();
         KStream<byte[], String> message = builder.stream("twitter", Consumed.with(byteArraySerde, stringSerde));
         KStream<byte[], JsonNode> json_message = message.map((key, value) -> new KeyValue<>(key, parse(value)));
-        //KStream<byte[], JsonNode> test = message.mapValues((value)-> print(value.get("source")));
-        message.print();
+        KStream<byte[], JsonNode> test = json_message.mapValues((value)-> YOUR_FUCKING_FUNCTION(value.get("message").asText()));
 
 
 
