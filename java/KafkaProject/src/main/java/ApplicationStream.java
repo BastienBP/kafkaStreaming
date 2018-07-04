@@ -1,5 +1,12 @@
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import edu.stanford.nlp.ling.CoreAnnotations;
+import edu.stanford.nlp.neural.rnn.RNNCoreAnnotations;
+import edu.stanford.nlp.pipeline.Annotation;
+import edu.stanford.nlp.pipeline.StanfordCoreNLP;
+import edu.stanford.nlp.sentiment.SentimentCoreAnnotations;
+import edu.stanford.nlp.trees.Tree;
+import edu.stanford.nlp.util.CoreMap;
 import org.apache.kafka.streams.KafkaStreams;
 import org.apache.kafka.streams.KeyValue;
 import org.apache.kafka.streams.StreamsBuilder;
@@ -10,16 +17,25 @@ import org.apache.kafka.common.serialization.Serdes;
 
 
 import java.io.IOException;
+import java.util.Properties;
 
-public class ApplicationStream extends StreamingConfig{
+public class ApplicationStream extends StreamingConfig {
 
-    public static void main(String[] args){
+    private StanfordCoreNLP pipeline;
+
+    public static void main(String[] args) {
 
         ApplicationStream main = new ApplicationStream();
         main.run();
     }
 
-    public JsonNode parse(String stringToParse){
+    public ApplicationStream() {
+        Properties props = new Properties();
+        props.setProperty("annotators", "sentiment");
+        this.pipeline = new StanfordCoreNLP(props);
+    }
+
+    public JsonNode parse(String stringToParse) {
         ObjectMapper mapper = new ObjectMapper();
 
         try {
@@ -33,7 +49,7 @@ public class ApplicationStream extends StreamingConfig{
 
     }
 
-    public void print(JsonNode stringToParse){
+    public void print(JsonNode stringToParse) {
         System.out.println(stringToParse);
     }
 
@@ -52,11 +68,29 @@ public class ApplicationStream extends StreamingConfig{
         message.print();
 
 
-
         KafkaStreams streams = new KafkaStreams(builder.build(), config);
         streams.start();
-
-
     }
 
+
+    public int findSentiment(String tweet) {
+        int mainSentiment = 0;
+        if (tweet != null && tweet.length() > 0) {
+            int longest = 0;
+            Annotation annotation = this.pipeline.process(tweet);
+            for (CoreMap sentence : annotation
+                    .get(CoreAnnotations.SentencesAnnotation.class)) {
+                Tree tree = sentence
+                        .get(SentimentCoreAnnotations.SentimentAnnotatedTree.class);
+                int sentiment = RNNCoreAnnotations.getPredictedClass(tree);
+                String partText = sentence.toString();
+                if (partText.length() > longest) {
+                    mainSentiment = sentiment;
+                    longest = partText.length();
+                }
+
+            }
+        }
+        return mainSentiment;
+    }
 }
