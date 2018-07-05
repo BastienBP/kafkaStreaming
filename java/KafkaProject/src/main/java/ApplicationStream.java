@@ -26,6 +26,7 @@ import org.apache.kafka.common.serialization.Serdes;
 
 import javax.json.Json;
 import java.io.IOException;
+import java.security.InvalidParameterException;
 import java.util.Properties;
 
 public class ApplicationStream extends StreamingConfig {
@@ -64,68 +65,83 @@ public class ApplicationStream extends StreamingConfig {
     private void run() {
 
         Deserializer<JsonNode> jsonNodeDeserializer = new JsonDeserializer();
-        Serializer<JsonNode> jsonSerializer= new JsonSerializer();
+        Serializer<JsonNode> jsonSerializer = new JsonSerializer();
 
         Serde<String> stringSerde = Serdes.String();
         Serde<JsonNode> jsonSerde = Serdes.serdeFrom(jsonSerializer, jsonNodeDeserializer);
 
-
-        ObjectMapper mapper = new ObjectMapper();
-
         StreamsBuilder builder = new StreamsBuilder();
-        KStream<String, String> message = builder.stream("twitter", Consumed.with(stringSerde, stringSerde));
-        KStream<String, JsonNode> json_message = message.mapValues((value) -> {
-             JsonNode node = parse(value);
-             int sentiment = findSentiment(node.get("message").asText());
-            ObjectNode test_copy = node.deepCopy();
-            test_copy.put("sentiment",sentiment);
-            JsonNode casted_json_message = ((JsonNode) test_copy);
 
-            return casted_json_message;
+        KStream<String, String> rawTweets = builder.stream("raw_tweets", Consumed.with(stringSerde, stringSerde));
 
+        KStream<String, JsonNode> tweetsWithRawSentiments = rawTweets.mapValues((value) -> {
+            JsonNode node = parse(value);
+            int sentiment = findSentiment(node.get("message").asText());
+            ObjectNode objectNode = node.deepCopy();
+            objectNode.put("sentiment", sentiment);
+            return objectNode;
         });
 
-        KGroupedStream<String, JsonNode> twitter_group_by_user = json_message.groupBy((key, value) -> value.get("nickname").asText());
+        tweetsWithRawSentiments
+                .<JsonNode>mapValues(value -> {
+                    ObjectNode node = value.deepCopy();
+                    node.put("sentiment", mapSentiment(node.get("sentiment").asInt()));
+                    return node;
+                })
+                .to("analyzed_tweets", Produced.with(stringSerde, jsonSerde));
 
-        KTable<String, JsonNode> group_user_twitter = twitter_group_by_user.aggregate(
+        KGroupedStream<String, JsonNode> tweetsGroupedByUser = tweetsWithRawSentiments
+                .groupBy((key, value) -> value.get("nickname").asText(), Serialized.with(stringSerde, jsonSerde));
+
+        KTable<String, JsonNode> group_user_twitter = tweetsGroupedByUser.aggregate(
                 () -> {
                     ObjectNode node = JsonNodeFactory.instance.objectNode();
                     node.put("negative", 0);
                     node.put("neutral", 0);
-                    node.put("positive",0);
+                    node.put("positive", 0);
 
                     return node;
-
                 },
                 (key, value, aggregate) -> {
                     ObjectNode ag = aggregate.deepCopy();
 
-                    if (value.get("sentiment").asInt()==2){
-                        ag.put("neutral", ag.get("neutral").asLong()+1);
+                    if (value.get("sentiment").asInt() == 2) {
+                        ag.put("neutral", ag.get("neutral").asLong() + 1);
+                    } else if (value.get("sentiment").asInt() < 2) {
+                        ag.put("negative", ag.get("negative").asLong() + 1);
+                    } else {
+                        ag.put("positive", ag.get("positive").asLong() + 1);
                     }
 
-                    else if (value.get("sentiment").asInt()<2){
-                        ag.put("negative", ag.get("negative").asLong()+1);
-                    }
-                    else {
-                        ag.put("positive", ag.get("positive").asLong()+1);
-                    }
-                    //JsonNode ag_j = ((JsonNode) ag);
                     return ag;
                 }, Materialized.with(stringSerde, jsonSerde));
-        //group_user_twitter.to(Serdes.String(), jsonSerde, "twitter_group_by_user");
 
-
-
-
+        group_user_twitter.toStream().to("sentiments_all_user", Produced.with(stringSerde, jsonSerde));
 
 
         KafkaStreams streams = new KafkaStreams(builder.build(), config);
         streams.start();
     }
 
+    private String mapSentiment(int sentiment) {
+        // "Very negative" = 0 "Negative" = 1 "Neutral" = 2 "Positive" = 3 "Very positive" = 4
+        switch (sentiment) {
+            case 0:
+                return "Very negative";
+            case 1:
+                return "Negative";
+            case 2:
+                return "Neutral";
+            case 3:
+                return "Positive";
+            case 4:
+                return "Very positive";
+            default:
+                throw new InvalidParameterException("Invalid sentiment");
+        }
+    }
 
-    public int findSentiment(String tweet) {
+    private int findSentiment(String tweet) {
         int mainSentiment = 0;
         if (tweet != null && tweet.length() > 0) {
             int longest = 0;
