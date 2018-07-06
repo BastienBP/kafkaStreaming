@@ -35,7 +35,7 @@ router
         }
 
         if (time === 'all') {
-          return res.json(messages);
+          return res.json(messages.map(message => message.value));
         }
 
         const date =  dateHandler(messages[0].value.date, time);
@@ -75,7 +75,7 @@ router
         }
 
         if (time === 'all') {
-          return res.json(messages);
+          return res.json(messages.map(message => ({[message.key]: message.value})));
         }
 
         const date =  dateHandler(messages[0].value.date, time);
@@ -119,11 +119,11 @@ router
         const userMessage = messages.find(message => message.key === userId);
 
         if (time === 'all') {
-          return res.json(userMessage);
+          return res.json({[userMessage.key]: userMessage.value});
         }
 
         userMessage.value.date = dateHandler(userMessage.value.date, time)
-        return res.json(userMessage);
+        return res.json({[userMessage.key]: userMessage.value});
       });
 
       table.start();
