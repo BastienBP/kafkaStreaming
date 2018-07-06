@@ -11,10 +11,11 @@ import edu.stanford.nlp.trees.Tree;
 import edu.stanford.nlp.util.CoreMap;
 import org.apache.kafka.common.serialization.Deserializer;
 import org.apache.kafka.common.serialization.Serializer;
-
+import org.apache.kafka.streams.kstream.TimeWindows;
 import org.apache.kafka.connect.json.JsonDeserializer;
 import org.apache.kafka.connect.json.JsonSerializer;
-
+import org.apache.kafka.streams.kstream.internals.WindowedDeserializer;
+import org.apache.kafka.streams.kstream.internals.WindowedSerializer;
 import org.apache.kafka.streams.KafkaStreams;
 import org.apache.kafka.streams.KeyValue;
 import org.apache.kafka.streams.StreamsBuilder;
@@ -22,17 +23,15 @@ import org.apache.kafka.streams.kstream.*;
 import org.apache.kafka.common.serialization.Serde;
 import org.apache.kafka.streams.Consumed;
 import org.apache.kafka.common.serialization.Serdes;
-//import sun.plugin2.message.Serializer;
+import org.apache.kafka.common.serialization.StringDeserializer;
+import org.apache.kafka.common.serialization.StringSerializer;
 
 
-import javax.json.Json;
 import java.io.IOException;
 import java.security.InvalidParameterException;
 import java.util.Arrays;
 import java.util.List;
-import java.util.Map;
 import java.util.Properties;
-import java.util.function.Function;
 import java.util.stream.Collectors;
 
 public class ApplicationStream extends StreamingConfig {
@@ -73,9 +72,15 @@ public class ApplicationStream extends StreamingConfig {
         Deserializer<JsonNode> jsonNodeDeserializer = new JsonDeserializer();
         Serializer<JsonNode> jsonSerializer = new JsonSerializer();
 
-        Serde<String> stringSerde = Serdes.String();
         Serde<Long> longSerde = Serdes.Long();
         Serde<JsonNode> jsonSerde = Serdes.serdeFrom(jsonSerializer, jsonNodeDeserializer);
+
+        StringSerializer stringSerializer = new StringSerializer();
+        StringDeserializer stringDeserializer = new StringDeserializer();
+        Serde<String> stringSerde = Serdes.serdeFrom(stringSerializer, stringDeserializer);
+        WindowedSerializer<String> windowedSerializer = new WindowedSerializer<>(stringSerializer);
+        WindowedDeserializer<String> windowedDeserializer = new WindowedDeserializer<>(stringDeserializer);
+        Serde<Windowed<String>> windowedSerde = Serdes.serdeFrom(windowedSerializer, windowedDeserializer);
 
         StreamsBuilder builder = new StreamsBuilder();
 
@@ -112,6 +117,137 @@ public class ApplicationStream extends StreamingConfig {
 
         KGroupedStream<String, JsonNode> tweetsGroupedByUser = tweetsWithRawSentiments
                 .groupBy((key, value) -> value.get("nickname").asText(), Serialized.with(stringSerde, jsonSerde));
+
+
+        TimeWindowedKStream<String, JsonNode> tweetsGroupedByHour = tweetsWithRawSentiments
+                .groupBy((key, value) -> value.get("sentiment").asText(), Serialized.with(stringSerde, jsonSerde))
+                .windowedBy(TimeWindows.of(1 * 3600 * 1000));
+
+        KTable<Windowed<String>, JsonNode> group_hour_twitter = tweetsGroupedByHour.aggregate(
+                () -> {
+                    ObjectNode node = JsonNodeFactory.instance.objectNode();
+                    node.put("negative", 0);
+                    node.put("neutral", 0);
+                    node.put("positive", 0);
+
+                    return node;
+                },
+                (key, value, aggregate) -> {
+                    ObjectNode ag = aggregate.deepCopy();
+
+                    if (value.get("sentiment").asInt() == 2) {
+                        ag.put("neutral", ag.get("neutral").asLong() + 1);
+                    } else if (value.get("sentiment").asInt() < 2) {
+                        ag.put("negative", ag.get("negative").asLong() + 1);
+                    } else {
+                        ag.put("positive", ag.get("positive").asLong() + 1);
+                    }
+                    ag.put("date", value.get("timestamp"));
+
+                    return ag;
+                },
+                Materialized.as("sentiments_all_hour1").with(stringSerde, jsonSerde));
+
+        group_hour_twitter.to(windowedSerde, jsonSerde, "sentiments_all_hour");
+
+
+        // Time windows by year
+
+        TimeWindowedKStream<String, JsonNode> tweetsGroupedByYear = tweetsWithRawSentiments
+                .groupBy((key, value) -> value.get("sentiment").asText(), Serialized.with(stringSerde, jsonSerde))
+                .windowedBy(TimeWindows.of(31104000000L));
+
+        KTable<Windowed<String>, JsonNode> group_year_twitter = tweetsGroupedByYear.aggregate(
+                () -> {
+                    ObjectNode node = JsonNodeFactory.instance.objectNode();
+                    node.put("negative", 0);
+                    node.put("neutral", 0);
+                    node.put("positive", 0);
+
+                    return node;
+                },
+                (key, value, aggregate) -> {
+                    ObjectNode ag = aggregate.deepCopy();
+
+                    if (value.get("sentiment").asInt() == 2) {
+                        ag.put("neutral", ag.get("neutral").asLong() + 1);
+                    } else if (value.get("sentiment").asInt() < 2) {
+                        ag.put("negative", ag.get("negative").asLong() + 1);
+                    } else {
+                        ag.put("positive", ag.get("positive").asLong() + 1);
+                    }
+                    ag.put("date", value.get("timestamp"));
+                    return ag;
+                },
+                Materialized.as("sentiments_all_year").with(stringSerde, jsonSerde));
+
+        group_hour_twitter.to(windowedSerde, jsonSerde, "sentiments_year");
+
+        // Time windows by month
+
+        TimeWindowedKStream<String, JsonNode> tweetsGroupedByMonth = tweetsWithRawSentiments
+                .groupBy((key, value) -> value.get("sentiment").asText(), Serialized.with(stringSerde, jsonSerde))
+                .windowedBy(TimeWindows.of(2592000000L));
+
+        KTable<Windowed<String>, JsonNode> group_month_twitter = tweetsGroupedByMonth.aggregate(
+                () -> {
+                    ObjectNode node = JsonNodeFactory.instance.objectNode();
+                    node.put("negative", 0);
+                    node.put("neutral", 0);
+                    node.put("positive", 0);
+
+                    return node;
+                },
+                (key, value, aggregate) -> {
+                    ObjectNode ag = aggregate.deepCopy();
+
+                    if (value.get("sentiment").asInt() == 2) {
+                        ag.put("neutral", ag.get("neutral").asLong() + 1);
+                    } else if (value.get("sentiment").asInt() < 2) {
+                        ag.put("negative", ag.get("negative").asLong() + 1);
+                    } else {
+                        ag.put("positive", ag.get("positive").asLong() + 1);
+                    }
+                    ag.put("date", value.get("timestamp"));
+                    return ag;
+                },
+                Materialized.as("sentiments_all_month").with(stringSerde, jsonSerde));
+
+        group_month_twitter.to(windowedSerde, jsonSerde, "sentiments_month");
+
+
+        // Time windows by month
+
+        TimeWindowedKStream<String, JsonNode> tweetsGroupedByDay = tweetsWithRawSentiments
+                .groupBy((key, value) -> value.get("sentiment").asText(), Serialized.with(stringSerde, jsonSerde))
+                .windowedBy(TimeWindows.of(1 * 3600 * 24 * 1000));
+
+        KTable<Windowed<String>, JsonNode> group_day_twitter = tweetsGroupedByDay.aggregate(
+                () -> {
+                    ObjectNode node = JsonNodeFactory.instance.objectNode();
+                    node.put("negative", 0);
+                    node.put("neutral", 0);
+                    node.put("positive", 0);
+
+                    return node;
+                },
+                (key, value, aggregate) -> {
+                    ObjectNode ag = aggregate.deepCopy();
+
+                    if (value.get("sentiment").asInt() == 2) {
+                        ag.put("neutral", ag.get("neutral").asLong() + 1);
+                    } else if (value.get("sentiment").asInt() < 2) {
+                        ag.put("negative", ag.get("negative").asLong() + 1);
+                    } else {
+                        ag.put("positive", ag.get("positive").asLong() + 1);
+                    }
+                    ag.put("date", value.get("timestamp"));
+                    return ag;
+                },
+                Materialized.as("sentiments_all_day").with(stringSerde, jsonSerde));
+
+        group_day_twitter.to(windowedSerde, jsonSerde, "sentiments_day");
+
 
         KTable<String, JsonNode> group_user_twitter = tweetsGroupedByUser.aggregate(
                 () -> {
