@@ -24,12 +24,16 @@ export default class Table extends EventEmitter {
     }]);
     this.nMessages = this.offsets[this.topicName]['0'][0];
   }
+
   push(message) {
     if (this.messages.length >= this.nMessages) return false;
     this.messages.push(message);
     if (this.nMessages === this.messages.length) {
       this._consumer.close();
-      this.emit('done', this.messages.map(message => ({[message.key]: JSON.parse(message.value)})));
+      this.emit('done', this.messages.map(message => {
+        message.value = JSON.parse(message.value);
+        return message;
+      }));
     }
   }
 

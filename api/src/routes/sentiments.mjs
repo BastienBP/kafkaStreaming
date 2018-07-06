@@ -1,10 +1,9 @@
 import express from 'express';
-import { KafkaStream, kafkaClient, snowflake, Table} from '../helpers/index';
-import kafka from 'kafka-node';
+import { Table } from '../helpers/index';
 import Check from 'express-validator/check';
 import Filter from 'express-validator/filter';
-import Promise from 'bluebird';
 import HttpError from 'http-errors';
+import moment from 'moment';
 
 
 const router = express.Router();
@@ -27,14 +26,27 @@ router
 
       let { time = 'all' } = matchedData(req);
 
+      const topicName = `sentiments_${time}`;
+      const table = new Table(topicName);
+      await table.init();
+      table.on('done', messages => {
+        if (!messages.length) {
+          return res.json([]);
+        }
 
-      const stream = KafkaStream.getKStream(`sentiments_${time}`);
-      const messages = []
-      stream.forEach(message => {
-        messages.push(message);
+        if (time === 'all') {
+          return res.json(messages);
+        }
+
+        const date =  dateHandler(messages[0].value.date, time);
+
+        return res.json(messages.map(message => {
+          message.value.date = date;
+          return message.value;
+        }));
       });
 
-      return res.json(messages);
+      table.start();
     })().catch(next);
   });
 
@@ -58,7 +70,20 @@ router
       const table = new Table(topicName);
       await table.init();
       table.on('done', messages => {
-        res.json(messages);
+        if (!messages.length) {
+          return res.json([]);
+        }
+
+        if (time === 'all') {
+          return res.json(messages);
+        }
+
+        const date =  dateHandler(messages[0].value.date, time);
+
+        return res.json(messages.map(message => {
+          message.value.date = date;
+          return {[message.key]: message.value};
+        }));
       });
 
       table.start();
@@ -83,16 +108,42 @@ router
 
       let { userId, time = 'all' } = matchedData(req);
 
-      const stream = KafkaStream.getKStream(`sentiments_${time}${userId ? userId : ''}`);
+      const topicName = `sentiments_${time}_user`;
+      const table = new Table(topicName);
+      await table.init();
+      table.on('done', messages => {
+        if (!messages.length) {
+          return res.json([]);
+        }
 
-      const messages = [];
-      stream.forEach(message => {
-        messages.push(message);
+        const userMessage = messages.find(message => message.key === userId);
+
+        if (time === 'all') {
+          return res.json(userMessage);
+        }
+
+        userMessage.value.date = dateHandler(userMessage.value.date, time)
+        return res.json(userMessage);
       });
 
-      return res.json(messages);
+      table.start();
     })().catch(next);
   });
 
+
+function dateHandler(timestamp, timeUnit) {
+  timestamp = timestamp / 1000000000;
+  if (timeUnit === 'day') {
+    return moment.unix(timestamp).format('DD/MM/YYYY');
+  }
+
+  if (timeUnit === 'month') {
+    return moment.unix(timestamp).format('MM/YYYY');
+  }
+
+  if (timeUnit === 'year') {
+    return moment.unix(timestamp).format('YYYY');
+  }
+}
 
 export default router;

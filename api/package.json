@@ -22,6 +22,7 @@
     "http-errors": "^1.6.3",
     "kafka-node": "^2.6.1",
     "kafka-streams": "^4.5.0",
+    "moment": "^2.22.2",
     "morgan": "^1.9.0",
     "node-snowflake": "git+https://github.com/GenjitsuGame/node-snowflake.git"
   }
