@@ -16,6 +16,7 @@ import org.apache.kafka.connect.json.JsonDeserializer;
 import org.apache.kafka.connect.json.JsonSerializer;
 
 import org.apache.kafka.streams.KafkaStreams;
+import org.apache.kafka.streams.KeyValue;
 import org.apache.kafka.streams.StreamsBuilder;
 import org.apache.kafka.streams.kstream.*;
 import org.apache.kafka.common.serialization.Serde;
@@ -27,7 +28,12 @@ import org.apache.kafka.common.serialization.Serdes;
 import javax.json.Json;
 import java.io.IOException;
 import java.security.InvalidParameterException;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Map;
 import java.util.Properties;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 public class ApplicationStream extends StreamingConfig {
 
@@ -68,6 +74,7 @@ public class ApplicationStream extends StreamingConfig {
         Serializer<JsonNode> jsonSerializer = new JsonSerializer();
 
         Serde<String> stringSerde = Serdes.String();
+        Serde<Long> longSerde = Serdes.Long();
         Serde<JsonNode> jsonSerde = Serdes.serdeFrom(jsonSerializer, jsonNodeDeserializer);
 
         StreamsBuilder builder = new StreamsBuilder();
@@ -81,6 +88,19 @@ public class ApplicationStream extends StreamingConfig {
             objectNode.put("sentiment", sentiment);
             return objectNode;
         });
+
+        KStream<String, Long> hashtagCount = rawTweets
+                .flatMap((key, value) -> {
+                    JsonNode node = parse(value);
+                    List<String> hashtags = extractHashtags(node.get("message").asText());
+                    List<KeyValue<String, Long>> hashtagsKVs = hashtags.stream().map(hashtag -> (new KeyValue<>(hashtag, 1L))).collect(Collectors.toList());
+                    return hashtagsKVs;
+                })
+                .groupByKey(Serialized.with(stringSerde, longSerde))
+                .count()
+                .toStream();
+
+        hashtagCount.to("hashtag_count", Produced.with(stringSerde, longSerde));
 
         tweetsWithRawSentiments
                 .<JsonNode>mapValues(value -> {
@@ -99,7 +119,6 @@ public class ApplicationStream extends StreamingConfig {
                     node.put("negative", 0);
                     node.put("neutral", 0);
                     node.put("positive", 0);
-
                     return node;
                 },
                 (key, value, aggregate) -> {
@@ -139,6 +158,12 @@ public class ApplicationStream extends StreamingConfig {
             default:
                 throw new InvalidParameterException("Invalid sentiment");
         }
+    }
+
+    private List<String> extractHashtags(String message) {
+        List<String> words = Arrays.asList(message.split("\\s+"));
+        List<String> hastags = words.stream().filter(word -> word.startsWith("#")).collect(Collectors.toList());
+        return hastags;
     }
 
     private int findSentiment(String tweet) {
