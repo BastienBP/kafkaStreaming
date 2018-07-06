@@ -1,0 +1,28 @@
+{
+  "name": "twitter-kafka-rest",
+  "version": "1.0.0",
+  "description": "",
+  "main": "src/index.mjs",
+  "scripts": {
+    "dev": "nodemon -w . --experimental-modules",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "bluebird": "^3.5.1",
+    "body-parser": "^1.18.3",
+    "compression": "^1.7.2",
+    "config": "^1.30.0",
+    "cors": "^2.8.4",
+    "express": "^4.16.3",
+    "express-request-id": "^1.4.0",
+    "express-validator": "^5.2.0",
+    "helmet": "^3.12.1",
+    "http-errors": "^1.6.3",
+    "kafka-node": "^2.6.1",
+    "kafka-streams": "^4.5.0",
+    "morgan": "^1.9.0",
+    "node-snowflake": "git+https://github.com/GenjitsuGame/node-snowflake.git"
+  }
+}
