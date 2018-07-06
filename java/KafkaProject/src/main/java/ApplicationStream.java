@@ -146,9 +146,9 @@ public class ApplicationStream extends StreamingConfig {
 
                     return ag;
                 },
-                Materialized.as("sentiments_all_hour1").with(stringSerde, jsonSerde));
+                Materialized.with(stringSerde, jsonSerde));
 
-        group_hour_twitter.to(windowedSerde, jsonSerde, "sentiments_all_hour");
+        group_hour_twitter.to(windowedSerde, jsonSerde, "sentiments_hour");
 
 
         // Time windows by year
@@ -179,7 +179,7 @@ public class ApplicationStream extends StreamingConfig {
                     ag.put("date", value.get("timestamp"));
                     return ag;
                 },
-                Materialized.as("sentiments_all_year").with(stringSerde, jsonSerde));
+                Materialized.with(stringSerde, jsonSerde));
 
         group_hour_twitter.to(windowedSerde, jsonSerde, "sentiments_year");
 
@@ -211,7 +211,7 @@ public class ApplicationStream extends StreamingConfig {
                     ag.put("date", value.get("timestamp"));
                     return ag;
                 },
-                Materialized.as("sentiments_all_month").with(stringSerde, jsonSerde));
+                Materialized.as("sentiments_month").with(stringSerde, jsonSerde));
 
         group_month_twitter.to(windowedSerde, jsonSerde, "sentiments_month");
 
@@ -244,7 +244,7 @@ public class ApplicationStream extends StreamingConfig {
                     ag.put("date", value.get("timestamp"));
                     return ag;
                 },
-                Materialized.as("sentiments_all_day").with(stringSerde, jsonSerde));
+                Materialized.with(stringSerde, jsonSerde));
 
         group_day_twitter.to(windowedSerde, jsonSerde, "sentiments_day");
 
