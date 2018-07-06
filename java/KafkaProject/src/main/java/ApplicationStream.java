@@ -128,6 +128,7 @@ public class ApplicationStream extends StreamingConfig {
                     } else {
                         ag.put("positive", ag.get("positive").asLong() + 1);
                     }
+                    ag.put("date", value.get("timestamp"));
 
                     return ag;
                 },
@@ -161,7 +162,7 @@ public class ApplicationStream extends StreamingConfig {
                     } else {
                         ag.put("positive", ag.get("positive").asLong() + 1);
                     }
-
+                    ag.put("date", value.get("timestamp"));
                     return ag;
                 },
                 Materialized.as("sentiments_all_year").with(stringSerde, jsonSerde));
@@ -193,7 +194,7 @@ public class ApplicationStream extends StreamingConfig {
                     } else {
                         ag.put("positive", ag.get("positive").asLong() + 1);
                     }
-
+                    ag.put("date", value.get("timestamp"));
                     return ag;
                 },
                 Materialized.as("sentiments_all_month").with(stringSerde, jsonSerde));
@@ -226,7 +227,7 @@ public class ApplicationStream extends StreamingConfig {
                     } else {
                         ag.put("positive", ag.get("positive").asLong() + 1);
                     }
-
+                    ag.put("date", value.get("timestamp"));
                     return ag;
                 },
                 Materialized.as("sentiments_all_day").with(stringSerde, jsonSerde));
